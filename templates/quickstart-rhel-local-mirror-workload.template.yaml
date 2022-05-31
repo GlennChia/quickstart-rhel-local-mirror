@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: >-
+  This workload template deploys a RHEL Local Mirror instance in an existing VPC.
+  **WARNING** This template creates EC2 instances and related resources. You will
+  be billed for the AWS resources used if you create a stack from this template.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Network configuration
+      Parameters:
+      - VPCID
+      - VPCCIDR
+      - PrivateSubnet1ID
+    - Label:
+        default: Amazon EC2 configuration
+      Parameters:
+      - KeyPairName
+      - WorkloadInstanceType
+    ParameterLabels:
+      KeyPairName:
+        default: SSH key name
+      PrivateSubnet1ID:
+        default: Private subnet 1 ID
+      VPCID:
+        default: VPC ID
+      VPCCIDR:
+        default: VPC CIDR
+      WorkloadInstanceType:
+        default: Workload server instance type
+
+Parameters:
+  KeyPairName:
+    Description: Name of an existing EC2 key pair. All instances will launch with
+      this key pair.
+    Type: AWS::EC2::KeyPair::KeyName
+  PrivateSubnet1ID:
+    Description: ID of private subnet 1 in Availability Zone 1 for the workload (e.g.,
+      subnet-a0246dcd).
+    Type: AWS::EC2::Subnet::Id
+  VPCID:
+    Description: ID of your existing VPC for deployment.
+    Type: AWS::EC2::VPC::Id
+  VPCCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC.
+    Type: String
+  WorkloadInstanceType:
+    AllowedValues:
+    - t3a.2xlarge
+    - t3.2xlarge
+    - r5a.xlarge
+    - r5a.2xlarge
+    - r5a.4xlarge
+    - r5a.8xlarge
+    - r5.large
+    - r5.xlarge
+    - r5.2xlarge
+    - r5.4xlarge
+    - r5.8xlarge
+    - r4.xlarge
+    - r4.2xlarge
+    - r4.4xlarge
+    - r4.8xlarge
+    - z1d.large
+    - z1d.xlarge
+    ConstraintDescription: Must contain valid instance type
+    Default: r5.2xlarge
+    Description: Type of EC2 instance for the workload instance.
+    Type: String
+
+Rules:
+  KeyPairsNotEmpty:
+    Assertions:
+    - Assert:
+        Fn::Not:
+        - Fn::EachMemberEquals:
+          - Fn::RefAll: AWS::EC2::KeyPair::KeyName
+          - ''
+      AssertDescription: All key pair parameters must not be empty
+  SubnetsInVPC:
+    Assertions:
+    - Assert:
+        Fn::EachMemberIn:
+        - Fn::ValueOfAll:
+          - AWS::EC2::Subnet::Id
+          - VpcId
+        - Fn::RefAll: AWS::EC2::VPC::Id
+      AssertDescription: All subnets must in the VPC
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      HVM64: ami-0b0af3577fe5e3532
+
+Resources:
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: !Ref WorkloadInstanceType
+      KeyName: !Ref KeyPairName
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash -xe
+            dnf update -y
+            dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+            systemctl enable amazon-ssm-agent
+            systemctl start amazon-ssm-agent
+      SecurityGroupIds:
+      - !Ref InstanceSecurityGroup
+      SubnetId: !Ref PrivateSubnet1ID
+      BlockDeviceMappings:
+      - DeviceName: /dev/sda1
+        Ebs:
+          Encrypted: true
+          VolumeSize: 10
+          VolumeType: gp3
+          DeleteOnTermination: true
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-instance
+
+  InstanceIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Sid: AssumeRole
+          Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - !Ref InstanceIAMRole
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access to the Workload instances
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+      - Description: HTTP traffic from the VPC
+        IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: !Ref VPCCIDR
+
+Outputs:
+  InstancePrivateIp:
+    Description: Private IP of RHEL Local Mirror
+    Value: !GetAtt Instance.PrivateIp

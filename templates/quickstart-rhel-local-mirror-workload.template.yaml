@@ -19,9 +19,12 @@ Metadata:
       Parameters:
       - KeyPairName
       - WorkloadInstanceType
+      - StorageVolumeSize
     ParameterLabels:
       KeyPairName:
         default: SSH key name
+      StorageVolumeSize:
+        default: Storage volume size
       PrivateSubnet1ID:
         default: Private subnet 1 ID
       VPCID:
@@ -36,6 +39,10 @@ Parameters:
     Description: Name of an existing EC2 key pair. All instances will launch with
       this key pair.
     Type: AWS::EC2::KeyPair::KeyName
+  StorageVolumeSize:
+    Default: 150
+    Description: Capacity of the volume used to store update files (GB).
+    Type: Number
   PrivateSubnet1ID:
     Description: ID of private subnet 1 in Availability Zone 1 for the workload (e.g.,
       subnet-a0246dcd).
@@ -121,6 +128,12 @@ Resources:
         Ebs:
           Encrypted: true
           VolumeSize: 10
+          VolumeType: gp3
+          DeleteOnTermination: true
+      - DeviceName: /dev/sdf
+        Ebs:
+          Encrypted: true
+          VolumeSize: !Ref StorageVolumeSize
           VolumeType: gp3
           DeleteOnTermination: true
       Tags:

@@ -120,6 +120,16 @@ Resources:
             dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
             systemctl enable amazon-ssm-agent
             systemctl start amazon-ssm-agent
+            mkfs -t xfs /dev/nvme1n1
+            mount /dev/nvme1n1 /mnt
+            shopt -s dotglob
+            rsync -aulvXpogtr /var/* /mnt
+            umount /mnt
+            UUID=`blkid | grep nvme1n1 | awk '{print $2}' | awk -F \" '{print $2}'`
+            echo "UUID=$UUID /var                    xfs     defaults,noatime,nofail        0 2" >> /etc/fstab
+            mv /var/ /var.old
+            mkdir /var
+            mount -av
       SecurityGroupIds:
       - !Ref InstanceSecurityGroup
       SubnetId: !Ref PrivateSubnet1ID

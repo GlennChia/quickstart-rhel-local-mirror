@@ -130,6 +130,12 @@ Resources:
             mv /var/ /var.old
             mkdir /var
             mount -av
+            dnf install -y httpd
+            systemctl enable httpd
+            systemctl start httpd
+            mkdir /var/www/html/localmirror
+            chown -R apache:root /var/www/html/localmirror
+            reposync -p /var/www/html/localmirror --download-metadata
       SecurityGroupIds:
       - !Ref InstanceSecurityGroup
       SubnetId: !Ref PrivateSubnet1ID

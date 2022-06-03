@@ -20,6 +20,10 @@ Metadata:
       Parameters:
       - KeyPairName
       - WorkloadInstanceType
+    - Label:
+        default: Local mirror configuration
+      Parameters:
+      - LocalMirrorPrivateIp
     ParameterLabels:
       KeyPairName:
         default: SSH key name
@@ -31,6 +35,8 @@ Metadata:
         default: VPC CIDR
       WorkloadInstanceType:
         default: Workload server instance type
+      LocalMirrorPrivateIp:
+        default: Local mirror private IP
 
 Parameters:
   KeyPairName:
@@ -74,7 +80,11 @@ Parameters:
     Default: t2.micro
     Description: Type of EC2 instance for the client instance.
     Type: String
-
+  LocalMirrorPrivateIp:
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})
+    ConstraintDescription: Must be a valid IP address
+    Description: The Private IP address of the local mirror
+    Type: String
 Rules:
   KeyPairsNotEmpty:
     Assertions:
@@ -125,6 +135,37 @@ Resources:
             dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
             systemctl enable amazon-ssm-agent
             systemctl start amazon-ssm-agent
+            # Disable default repositories
+            dnf config-manager --set-disabled ansible-2-for-rhel-8-rhui-rpms
+            dnf config-manager --set-disabled rhel-8-appstream-rhui-rpms
+            dnf config-manager --set-disabled rhel-8-baseos-rhui-rpms
+            dnf config-manager --set-disabled rhui-client-config-server-8
+            # Configure refs to local mirror
+            cat <<"EOF" > /etc/yum.repos.d/localmirror.repo
+            [local-mirror-ansible-2-for-rhel-8-rhui-rpms]
+            name=local-mirror-ansible-2-for-rhel-8-rhui-rpms
+            baseurl=http://${LocalMirrorPrivateIp}/localmirror/ansible-2-for-rhel-8-rhui-rpms/
+            gpgcheck=0
+            enabled=1
+
+            [local-mirror-rhel-8-appstream-rhui-rpms]
+            name=local-mirror-rhel-8-appstream-rhui-rpms
+            baseurl=http://${LocalMirrorPrivateIp}/localmirror/rhel-8-appstream-rhui-rpms/
+            gpgcheck=0
+            enabled=1
+
+            [local-mirror-rhel-8-baseos-rhui-rpms]
+            name=local-mirror-rhel-8-baseos-rhui-rpms
+            baseurl=http://${LocalMirrorPrivateIp}/localmirror/rhel-8-baseos-rhui-rpms/
+            gpgcheck=0
+            enabled=1
+
+            [local-mirror-rhui-client-config-server-8]
+            name=local-mirror-rhui-client-config-server-8
+            baseurl=http://${LocalMirrorPrivateIp}/localmirror/rhui-client-config-server-8/
+            gpgcheck=0
+            enabled=1
+            EOF
       Tags:
       - Key: Name
         Value: !Sub ${AWS::StackName}-instance

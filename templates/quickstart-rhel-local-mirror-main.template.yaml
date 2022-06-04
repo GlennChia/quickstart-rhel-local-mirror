@@ -17,12 +17,27 @@ Metadata:
           - PublicSubnet1CIDR
           - PublicSubnet2CIDR
       - Label:
+          default: Amazon EC2 configuration
+        Parameters:
+          - KeyPairName
+          - Architecture
+          - WorkloadInstanceType
+          - StorageVolumeSize
+      - Label:
           default: AWS Quick Start configuration
         Parameters:
           - QSS3BucketName
           - QSS3BucketRegion
           - QSS3KeyPrefix
     ParameterLabels:
+      Architecture:
+        default: Workload server image architecture.
+      KeyPairName:
+        default: SSH key name
+      StorageVolumeSize:
+        default: Storage volume size
+      WorkloadInstanceType:
+        default: Workload server instance type
       PrivateSubnet1CIDR:
         default: Private subnet 1 CIDR
       PrivateSubnet2CIDR:
@@ -41,6 +56,45 @@ Metadata:
         default: VPC CIDR
 
 Parameters:
+  Architecture:
+    AllowedValues:
+      - x86_64
+      - arm64
+    ConstraintDescription: Must contain valid architecture
+    Default: x86_64
+    Description: The image architecture.
+    Type: String
+  KeyPairName:
+    Description: Name of an existing EC2 key pair. All instances will launch with
+      this key pair.
+    Type: AWS::EC2::KeyPair::KeyName
+  StorageVolumeSize:
+    Default: 150
+    Description: Capacity of the volume used to store update files (GB).
+    Type: Number
+  WorkloadInstanceType:
+    AllowedValues:
+      - t3a.2xlarge
+      - t3.2xlarge
+      - r5a.xlarge
+      - r5a.2xlarge
+      - r5a.4xlarge
+      - r5a.8xlarge
+      - r5.large
+      - r5.xlarge
+      - r5.2xlarge
+      - r5.4xlarge
+      - r5.8xlarge
+      - r4.xlarge
+      - r4.2xlarge
+      - r4.4xlarge
+      - r4.8xlarge
+      - z1d.large
+      - z1d.xlarge
+    ConstraintDescription: Must contain valid instance type
+    Default: r5.2xlarge
+    Description: Type of EC2 instance for the workload instance.
+    Type: String
   AvailabilityZones:
     Description: List of Availability Zones to use for the subnets in the VPC. Only
       two Availability Zones are used for this deployment, and the logical order of
@@ -128,3 +182,26 @@ Resources:
         PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
         PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
         VPCCIDR: !Ref VPCCIDR
+
+  WorkloadStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL:
+        Fn::Sub:
+          - 'https://${S3Bucket}.s3.${S3Region}.${AWS::URLSuffix}/${QSS3KeyPrefix}templates/quickstart-rhel-local-mirror-workload.template.yaml'
+          - S3Region: !If
+              - UsingDefaultBucket
+              - !Ref AWS::Region
+              - !Ref QSS3BucketRegion
+            S3Bucket: !If
+              - UsingDefaultBucket
+              - !Sub '${QSS3BucketName}-${AWS::Region}'
+              - !Ref QSS3BucketName
+      Parameters:
+        Architecture: !Ref Architecture
+        KeyPairName: !Ref KeyPairName
+        PrivateSubnet1ID: !GetAtt VPCStack.Outputs.PrivateSubnet1AID
+        StorageVolumeSize: !Ref StorageVolumeSize
+        VPCCIDR: !Ref VPCCIDR
+        VPCID: !GetAtt VPCStack.Outputs.VPCID
+        WorkloadInstanceType: !Ref WorkloadInstanceType

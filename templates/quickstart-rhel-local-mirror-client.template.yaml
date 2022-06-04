@@ -359,5 +359,5 @@ Resources:
 
 Outputs:
   InstancePrivateIp:
-    Description: Private IP of RHEL Local Mirror
+    Description: Private IP of RHEL Client
     Value: !GetAtt Instance.PrivateIp

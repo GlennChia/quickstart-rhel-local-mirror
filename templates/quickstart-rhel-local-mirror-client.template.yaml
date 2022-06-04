@@ -19,6 +19,7 @@ Metadata:
         default: Amazon EC2 configuration
       Parameters:
       - KeyPairName
+      - Architecture
       - WorkloadInstanceType
     - Label:
         default: Local mirror configuration
@@ -33,6 +34,8 @@ Metadata:
         default: VPC ID
       VPCCIDR:
         default: VPC CIDR
+      Architecture:
+        default: Workload server image architecture.
       WorkloadInstanceType:
         default: Workload server instance type
       LocalMirrorPrivateIp:
@@ -55,6 +58,14 @@ Parameters:
     ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
     Default: 10.0.0.0/16
     Description: CIDR block for the VPC.
+    Type: String
+  Architecture:
+    AllowedValues:
+    - x86_64
+    - arm64
+    ConstraintDescription: Must contain valid architecture
+    Default: arm64
+    Description: The image architecture.
     Type: String
   WorkloadInstanceType:
     AllowedValues:
@@ -104,17 +115,12 @@ Rules:
         - Fn::RefAll: AWS::EC2::VPC::Id
       AssertDescription: All subnets must in the VPC
 
-Mappings:
-  RegionMap:
-    us-east-1:
-      HVM64: ami-0b0af3577fe5e3532
-
 Resources:
   Instance:
     Type: AWS::EC2::Instance
     Properties:
       IamInstanceProfile: !Ref InstanceProfile
-      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      ImageId: !GetAtt Rhel8AMIInfo.Id
       InstanceType: !Ref WorkloadInstanceType
       KeyName: !Ref KeyPairName
       SecurityGroupIds:
@@ -208,6 +214,148 @@ Resources:
         FromPort: 443
         ToPort: 443
         CidrIp: "0.0.0.0/0"
+
+  Rhel8AMIInfo:
+    Type: Custom::Rhel8AMIInfo
+    Properties:
+      ServiceToken: !GetAtt AMIInfoFunction.Arn
+      Region: !Ref "AWS::Region"
+      AMIName: RHEL-8.4.0_HVM*
+      Architecture: !Ref Architecture
+
+  AMIInfoFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt AMIInfoFunctionLambdaExecutionRole.Arn
+      Timeout: 30
+      Handler: index.handler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Description: Get AMI ID for the latest RHEL8 image
+      Code:
+        ZipFile: |
+          /**
+          * A Lambda function that looks up the latest AMI ID for a given region and architecture.
+          **/
+          var aws = require("aws-sdk");
+          var https = require("https");
+          var url = require("url");
+
+          exports.handler = function(event, context) {
+            console.log(`REQUEST RECEIVED:\n ${JSON.stringify(event)}`);    // For Delete requests, immediately send a SUCCESS response.
+            if (event.RequestType == "Delete") {
+              sendResponse(event, context, "SUCCESS");
+              return;
+            }
+            var responseStatus = "FAILED";
+            var responseData = {};
+            var ec2 = new aws.EC2({region: event.ResourceProperties.Region});
+            var describeImagesParams = {
+              Filters: [
+                {
+                  Name: "name",
+                  Values: [event.ResourceProperties.AMIName]
+                },
+                {
+                  Name: "architecture",
+                  Values: [event.ResourceProperties.Architecture]
+                },
+              ],
+              Owners: ["309956199498"]
+            };
+            // Get AMI IDs with the specified name pattern and owner
+            ec2.describeImages(describeImagesParams, function(err, describeImagesResult) {
+              if (err) {
+                responseData = {Error: "DescribeImages call failed"};
+                console.log(responseData.Error + ":\n", err);
+              } else {
+                var images = describeImagesResult.Images;
+                // Sort images by name in decscending order. The names contain the AMI version, formatted as YYYY.MM.Ver.
+                images.sort(function(x, y) {
+                  return y.CreationDate.localeCompare(x.CreationDate);
+                });
+                for (var j = 0; j < images.length; j++) {
+                  if (isBeta(images[j].Name)) continue;
+                  responseStatus = "SUCCESS";
+                  responseData["Id"] = images[j].ImageId;
+                  break;
+                }
+              }
+            sendResponse(event, context, responseStatus, responseData);
+            });
+          };
+
+          // Check if the image is a beta or rc image. The Lambda function won't return any of those images.
+          function isBeta(imageName) {
+            return imageName.toLowerCase().indexOf("beta") > -1 || imageName.toLowerCase().indexOf(".rc") > -1;
+          }
+
+          // Send response to the pre-signed S3 URL
+          function sendResponse(event, context, responseStatus, responseData) {
+            var responseBody = JSON.stringify({
+              Status: responseStatus,
+              Reason: `See the details in CloudWatch Log Stream: ${context.logStreamName}`,
+              PhysicalResourceId: context.logStreamName,
+              StackId: event.StackId,
+              RequestId: event.RequestId,
+              LogicalResourceId: event.LogicalResourceId,
+              Data: responseData
+            });
+            console.log("RESPONSE BODY:\n", responseBody);
+            var parsedUrl = url.parse(event.ResponseURL);
+            var options = {
+              hostname: parsedUrl.hostname,
+              port: 443,
+              path: parsedUrl.path,
+              method: "PUT",
+              headers: {
+                "content-type": "",
+                "content-length": responseBody.length
+              }
+            };
+            console.log("SENDING RESPONSE...\n");
+            var request = https.request(options, function(response) {
+              console.log(`STATUS: ${response.statusCode}`);
+              console.log(`HEADERS: ${JSON.stringify(response.headers)}`);
+              context.done();
+            });
+            request.on("error", function(error) {
+              console.log(`sendResponse Error: ${error}`);
+              context.done();
+            });
+            request.write(responseBody);
+            request.end();
+          }
+
+  AMIInfoFunctionLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "* required per EC2 documentation"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - ec2:DescribeImages
+            Resource: "*"
 
 Outputs:
   InstancePrivateIp:

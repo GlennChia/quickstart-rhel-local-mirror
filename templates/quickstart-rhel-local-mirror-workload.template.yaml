@@ -64,7 +64,7 @@ Parameters:
     - x86_64
     - arm64
     ConstraintDescription: Must contain valid architecture
-    Default: arm64
+    Default: x86_64
     Description: The image architecture.
     Type: String
   WorkloadInstanceType:

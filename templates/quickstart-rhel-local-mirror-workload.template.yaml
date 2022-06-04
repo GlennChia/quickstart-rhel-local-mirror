@@ -1,0 +1,344 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: >-
+  This workload template deploys a RHEL Local Mirror instance in an existing VPC.
+  **WARNING** This template creates EC2 instances and related resources. You will
+  be billed for the AWS resources used if you create a stack from this template.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Network configuration
+      Parameters:
+      - VPCID
+      - VPCCIDR
+      - PrivateSubnet1ID
+    - Label:
+        default: Amazon EC2 configuration
+      Parameters:
+      - KeyPairName
+      - Architecture
+      - WorkloadInstanceType
+      - StorageVolumeSize
+    ParameterLabels:
+      KeyPairName:
+        default: SSH key name
+      StorageVolumeSize:
+        default: Storage volume size
+      PrivateSubnet1ID:
+        default: Private subnet 1 ID
+      VPCID:
+        default: VPC ID
+      VPCCIDR:
+        default: VPC CIDR
+      Architecture:
+        default: Workload server image architecture.
+      WorkloadInstanceType:
+        default: Workload server instance type
+
+Parameters:
+  KeyPairName:
+    Description: Name of an existing EC2 key pair. All instances will launch with
+      this key pair.
+    Type: AWS::EC2::KeyPair::KeyName
+  StorageVolumeSize:
+    Default: 150
+    Description: Capacity of the volume used to store update files (GB).
+    Type: Number
+  PrivateSubnet1ID:
+    Description: ID of private subnet 1 in Availability Zone 1 for the workload (e.g.,
+      subnet-a0246dcd).
+    Type: AWS::EC2::Subnet::Id
+  VPCID:
+    Description: ID of your existing VPC for deployment.
+    Type: AWS::EC2::VPC::Id
+  VPCCIDR:
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    ConstraintDescription: CIDR block parameter must be in the form x.x.x.x/16-28
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC.
+    Type: String
+  Architecture:
+    AllowedValues:
+    - x86_64
+    - arm64
+    ConstraintDescription: Must contain valid architecture
+    Default: arm64
+    Description: The image architecture.
+    Type: String
+  WorkloadInstanceType:
+    AllowedValues:
+    - t3a.2xlarge
+    - t3.2xlarge
+    - r5a.xlarge
+    - r5a.2xlarge
+    - r5a.4xlarge
+    - r5a.8xlarge
+    - r5.large
+    - r5.xlarge
+    - r5.2xlarge
+    - r5.4xlarge
+    - r5.8xlarge
+    - r4.xlarge
+    - r4.2xlarge
+    - r4.4xlarge
+    - r4.8xlarge
+    - z1d.large
+    - z1d.xlarge
+    ConstraintDescription: Must contain valid instance type
+    Default: r5.2xlarge
+    Description: Type of EC2 instance for the workload instance.
+    Type: String
+
+Rules:
+  KeyPairsNotEmpty:
+    Assertions:
+    - Assert:
+        Fn::Not:
+        - Fn::EachMemberEquals:
+          - Fn::RefAll: AWS::EC2::KeyPair::KeyName
+          - ''
+      AssertDescription: All key pair parameters must not be empty
+  SubnetsInVPC:
+    Assertions:
+    - Assert:
+        Fn::EachMemberIn:
+        - Fn::ValueOfAll:
+          - AWS::EC2::Subnet::Id
+          - VpcId
+        - Fn::RefAll: AWS::EC2::VPC::Id
+      AssertDescription: All subnets must in the VPC
+
+Resources:
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: !GetAtt Rhel8AMIInfo.Id
+      InstanceType: !Ref WorkloadInstanceType
+      KeyName: !Ref KeyPairName
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash -xe
+            dnf update -y
+            dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+            systemctl enable amazon-ssm-agent
+            systemctl start amazon-ssm-agent
+            mkfs -t xfs /dev/nvme1n1
+            mount /dev/nvme1n1 /mnt
+            shopt -s dotglob
+            rsync -aulvXpogtr /var/* /mnt
+            umount /mnt
+            UUID=`blkid | grep nvme1n1 | awk '{print $2}' | awk -F \" '{print $2}'`
+            echo "UUID=$UUID /var                    xfs     defaults,noatime,nofail        0 2" >> /etc/fstab
+            mv /var/ /var.old
+            mkdir /var
+            mount -av
+            dnf install -y httpd
+            systemctl enable httpd
+            systemctl start httpd
+            mkdir /var/www/html/localmirror
+            chown -R apache:root /var/www/html/localmirror
+            reposync -p /var/www/html/localmirror --download-metadata
+      SecurityGroupIds:
+      - !Ref InstanceSecurityGroup
+      SubnetId: !Ref PrivateSubnet1ID
+      BlockDeviceMappings:
+      - DeviceName: /dev/sda1
+        Ebs:
+          Encrypted: true
+          VolumeSize: 10
+          VolumeType: gp3
+          DeleteOnTermination: true
+      - DeviceName: /dev/sdf
+        Ebs:
+          Encrypted: true
+          VolumeSize: !Ref StorageVolumeSize
+          VolumeType: gp3
+          DeleteOnTermination: true
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-instance
+
+  InstanceIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Sid: AssumeRole
+          Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - !Ref InstanceIAMRole
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow access to the Workload instances
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+      - Description: HTTP traffic from the VPC
+        IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: !Ref VPCCIDR
+
+  Rhel8AMIInfo:
+    Type: Custom::Rhel8AMIInfo
+    Properties:
+      ServiceToken: !GetAtt AMIInfoFunction.Arn
+      Region: !Ref "AWS::Region"
+      AMIName: RHEL-8.4.0_HVM*
+      Architecture: !Ref Architecture
+
+  AMIInfoFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt AMIInfoFunctionLambdaExecutionRole.Arn
+      Timeout: 30
+      Handler: index.handler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Description: Get AMI ID for the latest RHEL8 image
+      Code:
+        ZipFile: |
+          /**
+          * A Lambda function that looks up the latest AMI ID for a given region and architecture.
+          **/
+          var aws = require("aws-sdk");
+          var https = require("https");
+          var url = require("url");
+
+          exports.handler = function(event, context) {
+            console.log(`REQUEST RECEIVED:\n ${JSON.stringify(event)}`);    // For Delete requests, immediately send a SUCCESS response.
+            if (event.RequestType == "Delete") {
+              sendResponse(event, context, "SUCCESS");
+              return;
+            }
+            var responseStatus = "FAILED";
+            var responseData = {};
+            var ec2 = new aws.EC2({region: event.ResourceProperties.Region});
+            var describeImagesParams = {
+              Filters: [
+                {
+                  Name: "name",
+                  Values: [event.ResourceProperties.AMIName]
+                },
+                {
+                  Name: "architecture",
+                  Values: [event.ResourceProperties.Architecture]
+                },
+              ],
+              Owners: ["309956199498"]
+            };
+            // Get AMI IDs with the specified name pattern and owner
+            ec2.describeImages(describeImagesParams, function(err, describeImagesResult) {
+              if (err) {
+                responseData = {Error: "DescribeImages call failed"};
+                console.log(responseData.Error + ":\n", err);
+              } else {
+                var images = describeImagesResult.Images;
+                // Sort images by name in decscending order. The names contain the AMI version, formatted as YYYY.MM.Ver.
+                images.sort(function(x, y) {
+                  return y.CreationDate.localeCompare(x.CreationDate);
+                });
+                for (var j = 0; j < images.length; j++) {
+                  if (isBeta(images[j].Name)) continue;
+                  responseStatus = "SUCCESS";
+                  responseData["Id"] = images[j].ImageId;
+                  break;
+                }
+              }
+            sendResponse(event, context, responseStatus, responseData);
+            });
+          };
+
+          // Check if the image is a beta or rc image. The Lambda function won't return any of those images.
+          function isBeta(imageName) {
+            return imageName.toLowerCase().indexOf("beta") > -1 || imageName.toLowerCase().indexOf(".rc") > -1;
+          }
+
+          // Send response to the pre-signed S3 URL
+          function sendResponse(event, context, responseStatus, responseData) {
+            var responseBody = JSON.stringify({
+              Status: responseStatus,
+              Reason: `See the details in CloudWatch Log Stream: ${context.logStreamName}`,
+              PhysicalResourceId: context.logStreamName,
+              StackId: event.StackId,
+              RequestId: event.RequestId,
+              LogicalResourceId: event.LogicalResourceId,
+              Data: responseData
+            });
+            console.log("RESPONSE BODY:\n", responseBody);
+            var parsedUrl = url.parse(event.ResponseURL);
+            var options = {
+              hostname: parsedUrl.hostname,
+              port: 443,
+              path: parsedUrl.path,
+              method: "PUT",
+              headers: {
+                "content-type": "",
+                "content-length": responseBody.length
+              }
+            };
+            console.log("SENDING RESPONSE...\n");
+            var request = https.request(options, function(response) {
+              console.log(`STATUS: ${response.statusCode}`);
+              console.log(`HEADERS: ${JSON.stringify(response.headers)}`);
+              context.done();
+            });
+            request.on("error", function(error) {
+              console.log(`sendResponse Error: ${error}`);
+              context.done();
+            });
+            request.write(responseBody);
+            request.end();
+          }
+
+  AMIInfoFunctionLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "* required per EC2 documentation"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action:
+            - ec2:DescribeImages
+            Resource: "*"
+
+Outputs:
+  InstancePrivateIp:
+    Description: Private IP of RHEL Local Mirror
+    Value: !GetAtt Instance.PrivateIp

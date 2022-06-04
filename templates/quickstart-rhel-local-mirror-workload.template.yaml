@@ -64,7 +64,7 @@ Parameters:
     - x86_64
     - arm64
     ConstraintDescription: Must contain valid architecture
-    Default: arm64
+    Default: x86_64
     Description: The image architecture.
     Type: String
   WorkloadInstanceType:
@@ -119,29 +119,28 @@ Resources:
       InstanceType: !Ref WorkloadInstanceType
       KeyName: !Ref KeyPairName
       UserData:
-        Fn::Base64:
-          !Sub |
-            #!/bin/bash -xe
-            dnf update -y
-            dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
-            systemctl enable amazon-ssm-agent
-            systemctl start amazon-ssm-agent
-            mkfs -t xfs /dev/nvme1n1
-            mount /dev/nvme1n1 /mnt
-            shopt -s dotglob
-            rsync -aulvXpogtr /var/* /mnt
-            umount /mnt
-            UUID=`blkid | grep nvme1n1 | awk '{print $2}' | awk -F \" '{print $2}'`
-            echo "UUID=$UUID /var                    xfs     defaults,noatime,nofail        0 2" >> /etc/fstab
-            mv /var/ /var.old
-            mkdir /var
-            mount -av
-            dnf install -y httpd
-            systemctl enable httpd
-            systemctl start httpd
-            mkdir /var/www/html/localmirror
-            chown -R apache:root /var/www/html/localmirror
-            reposync -p /var/www/html/localmirror --download-metadata
+        Fn::Base64: |
+          #!/bin/bash -xe
+          dnf update -y
+          dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
+          mkfs -t xfs /dev/nvme1n1
+          mount /dev/nvme1n1 /mnt
+          shopt -s dotglob
+          rsync -aulvXpogtr /var/* /mnt
+          umount /mnt
+          UUID=`blkid | grep nvme1n1 | awk '{print $2}' | awk -F \" '{print $2}'`
+          echo "UUID=$UUID /var                    xfs     defaults,noatime,nofail        0 2" >> /etc/fstab
+          mv /var/ /var.old
+          mkdir /var
+          mount -av
+          dnf install -y httpd
+          systemctl enable httpd
+          systemctl start httpd
+          mkdir /var/www/html/localmirror
+          chown -R apache:root /var/www/html/localmirror
+          reposync -p /var/www/html/localmirror --download-metadata
       SecurityGroupIds:
       - !Ref InstanceSecurityGroup
       SubnetId: !Ref PrivateSubnet1ID

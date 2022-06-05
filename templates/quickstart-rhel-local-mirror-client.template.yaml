@@ -69,24 +69,17 @@ Parameters:
     Type: String
   WorkloadInstanceType:
     AllowedValues:
+    # x86_64 allowed instance types
     - t2.micro
-    - t3a.2xlarge
-    - t3.2xlarge
-    - r5a.xlarge
-    - r5a.2xlarge
-    - r5a.4xlarge
-    - r5a.8xlarge
-    - r5.large
-    - r5.xlarge
-    - r5.2xlarge
-    - r5.4xlarge
-    - r5.8xlarge
-    - r4.xlarge
-    - r4.2xlarge
-    - r4.4xlarge
-    - r4.8xlarge
-    - z1d.large
-    - z1d.xlarge
+    - t2.small
+    - t2.medium
+    - t3.micro
+    - t3.small
+    - t3.medium
+    # arm64 allowed instance types
+    - t4g.micro
+    - t4g.small
+    - t4g.medium
     ConstraintDescription: Must contain valid instance type
     Default: t2.micro
     Description: Type of EC2 instance for the client instance.

@@ -74,6 +74,7 @@ Parameters:
     Type: Number
   WorkloadInstanceType:
     AllowedValues:
+      # x86_64 allowed instance types
       - t3a.2xlarge
       - t3.2xlarge
       - r5a.xlarge
@@ -91,6 +92,12 @@ Parameters:
       - r4.8xlarge
       - z1d.large
       - z1d.xlarge
+      # arm64 allowed instance types
+      - t4g.2xlarge
+      - r6g.xlarge
+      - r6g.2xlarge
+      - r6g.4xlarge
+      - r6g.8xlarge
     ConstraintDescription: Must contain valid instance type
     Default: r5.2xlarge
     Description: Type of EC2 instance for the workload instance.

@@ -26,21 +26,21 @@ image::../docs/deployment_guide/images/local_mirror_repositories.png[localmirror
 4. Select the checkbox next to the *rhel8-local-mirror-client* EC2 instance and choose *Connect*.
 5. Choose the *Session Manager* tab and choose *Connect*.
 6. Once connected, run the following command to verify that the client is configured to install packages from the {partner-product-short-name}.
-
++
 ```
 sudo dnf repolist
 ```
-
++
 [#repolist]
 .List repositories within the {partner-product-short-name} client on AWS
 image::../docs/deployment_guide/images/repo_list.png[repolist]
-
++
 7. Install a package and verify that it pulls from the {partner-product-short-name}.
-
++
 ```
 sudo dnf install git -y
 ```
-
++
 [#installpackage]
 .Install package in the {partner-product-short-name} client on AWS
 image::../docs/deployment_guide/images/install_package.png[installpackage]

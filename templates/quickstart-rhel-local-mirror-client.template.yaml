@@ -174,7 +174,7 @@ Resources:
             EOF
       Tags:
       - Key: Name
-        Value: !Sub ${AWS::StackName}-instance
+        Value: rhel8-local-mirror-client
 
   InstanceIAMRole:
     Type: AWS::IAM::Role

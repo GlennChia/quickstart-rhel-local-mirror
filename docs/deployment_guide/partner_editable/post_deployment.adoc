@@ -1,3 +1,46 @@
 // Include any postdeployment steps here, such as steps necessary to test that the deployment was successful. If there are no postdeployment steps, leave this file empty.
 
 == Postdeployment steps
+
+=== Verify that the remote repositories are loaded on the local mirror
+
+1. Open the Amazon EC2 console at https://console.aws.amazon.com/ec2/v2/home#Instances:instanceState=running[EC2 Console^]
+2. From the navigation bar, choose the AWS Region you used for the Quick Start deployment.
+3. Select the checkbox next to the *rhel8-local-mirror* EC2 instance and choose *Connect*.
+4. Choose the *Session Manager* tab and choose *Connect*.
+5. Once connected, run the following command to verify that the repositories are loaded into the local mirror
+
+```
+ls /var/www/html/localmirror
+```
+
+[#localmirrorrepositories]
+.Local mirror repositories within the {partner-product-short-name} on AWS
+image::../docs/deployment_guide/images/local_mirror_repositories.png[localmirrorrepositories]
+
+=== Optional: Deploy a RHEL 8 client that installs updates or packages from the local mirror
+
+1. http://qs_launch_permalink[Deploy {partner-product-short-name} client into a new VPC^]. This option provisions an EC2 instance in the same VPC as the {partner-product-short-name} EC2 instance. This EC2 instance is configured to install packages from the {partner-product-short-name} EC2 instance.
+2. Open the Amazon EC2 console at https://console.aws.amazon.com/ec2/v2/home#Instances:instanceState=running[EC2 Console^]
+3. From the navigation bar, choose the AWS Region you used for the Quick Start deployment.
+4. Select the checkbox next to the *rhel8-local-mirror-client* EC2 instance and choose *Connect*.
+5. Choose the *Session Manager* tab and choose *Connect*.
+6. Once connected, run the following command to verify that the client is configured to install packages from the {partner-product-short-name}.
+
+```
+sudo dnf repolist
+```
+
+[#repolist]
+.List repositories within the {partner-product-short-name} client on AWS
+image::../docs/deployment_guide/images/repo_list.png[repolist]
+
+7. Install a package and verify that it pulls from the {partner-product-short-name}.
+
+```
+sudo dnf install git -y
+```
+
+[#installpackage]
+.Install package in the {partner-product-short-name} client on AWS
+image::../docs/deployment_guide/images/install_package.png[installpackage]

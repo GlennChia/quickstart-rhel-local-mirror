@@ -18,7 +18,6 @@ Metadata:
         default: Amazon EC2 configuration
       Parameters:
       - KeyPairName
-      - Architecture
       - WorkloadInstanceType
       - StorageVolumeSize
     ParameterLabels:
@@ -32,8 +31,6 @@ Metadata:
         default: VPC ID
       VPCCIDR:
         default: VPC CIDR
-      Architecture:
-        default: Workload server image architecture.
       WorkloadInstanceType:
         default: Workload server instance type
 
@@ -59,17 +56,8 @@ Parameters:
     Default: 10.0.0.0/16
     Description: CIDR block for the VPC.
     Type: String
-  Architecture:
-    AllowedValues:
-    - x86_64
-    - arm64
-    ConstraintDescription: Must contain valid architecture
-    Default: x86_64
-    Description: The image architecture.
-    Type: String
   WorkloadInstanceType:
     AllowedValues:
-    # x86_64 allowed instance types
     - t3a.2xlarge
     - t3.2xlarge
     - r5a.xlarge
@@ -87,12 +75,6 @@ Parameters:
     - r4.8xlarge
     - z1d.large
     - z1d.xlarge
-    # arm64 allowed instance types
-    - t4g.2xlarge
-    - r6g.xlarge
-    - r6g.2xlarge
-    - r6g.4xlarge
-    - r6g.8xlarge
     ConstraintDescription: Must contain valid instance type
     Default: r5.2xlarge
     Description: Type of EC2 instance for the workload instance.
@@ -208,7 +190,7 @@ Resources:
       ServiceToken: !GetAtt AMIInfoFunction.Arn
       Region: !Ref "AWS::Region"
       AMIName: RHEL-8.4.0_HVM*
-      Architecture: !Ref Architecture
+      Architecture: x86_64
 
   AMIInfoFunction:
     Type: AWS::Lambda::Function

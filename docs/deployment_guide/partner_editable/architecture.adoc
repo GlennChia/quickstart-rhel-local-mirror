@@ -18,9 +18,8 @@ best practices, to provide you with your own virtual network on AWS.*
 ** Managed network address translation (NAT) gateways to allow outbound
 internet access for resources in the private subnets.*
 * In the private subnets:
-** <item>.
-** <item>.
+** An Amazon Elastic Compute Cloud (Amazon EC2) instance configured as the {partner-product-short-name}.
+** Optionally, an Amazon Elastic Compute Cloud (Amazon EC2) instance configured as the client that points to the {partner-product-short-name} for updates or package installations.
 // Add bullet points for any additional components that are included in the deployment. Ensure that the additional components are shown in the architecture diagram. End each bullet with a period.
-* <describe any additional components>.
 
 [.small]#* The template that deploys this Quick Start into an existing VPC skips the components marked by asterisks and prompts you for your existing VPC configuration.#

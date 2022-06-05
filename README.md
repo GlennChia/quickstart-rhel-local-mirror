@@ -9,7 +9,7 @@ You can use the AWS CloudFormation templates included with the Quick Start to de
 * [Deploying the RHEL 8 local mirror into an existing VPC](./templates/quickstart-rhel-local-mirror-workload.template.yaml)
 * [Deploying a sample client that is configured to pull updates and packages from the local mirror instead of the remote repositories](./templates/quickstart-rhel-local-mirror-client.template.yaml)
 
-![Quick Start architecture for RHEL 8 Local Mirror on the AWS Cloud](./diagrams/rhel-local-mirror.drawio.png)
+![Quick Start architecture for RHEL 8 Local Mirror on the AWS Cloud](./docs/deployment_guide/images/architecture_diagram.png)
 
 For architectural details, step-by-step instructions, and customization options, see the [deployment guide](https://aws-quickstart.github.io/quickstart-rhel-local-mirror/).
 

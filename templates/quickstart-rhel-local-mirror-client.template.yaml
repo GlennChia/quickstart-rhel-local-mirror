@@ -19,7 +19,6 @@ Metadata:
         default: Amazon EC2 configuration
       Parameters:
       - KeyPairName
-      - Architecture
       - WorkloadInstanceType
     - Label:
         default: Local mirror configuration
@@ -34,8 +33,6 @@ Metadata:
         default: VPC ID
       VPCCIDR:
         default: VPC CIDR
-      Architecture:
-        default: Workload server image architecture.
       WorkloadInstanceType:
         default: Workload server instance type
       LocalMirrorPrivateIp:
@@ -59,34 +56,15 @@ Parameters:
     Default: 10.0.0.0/16
     Description: CIDR block for the VPC.
     Type: String
-  Architecture:
-    AllowedValues:
-    - x86_64
-    - arm64
-    ConstraintDescription: Must contain valid architecture
-    Default: arm64
-    Description: The image architecture.
-    Type: String
   WorkloadInstanceType:
     AllowedValues:
+    # x86_64 allowed instance types
     - t2.micro
-    - t3a.2xlarge
-    - t3.2xlarge
-    - r5a.xlarge
-    - r5a.2xlarge
-    - r5a.4xlarge
-    - r5a.8xlarge
-    - r5.large
-    - r5.xlarge
-    - r5.2xlarge
-    - r5.4xlarge
-    - r5.8xlarge
-    - r4.xlarge
-    - r4.2xlarge
-    - r4.4xlarge
-    - r4.8xlarge
-    - z1d.large
-    - z1d.xlarge
+    - t2.small
+    - t2.medium
+    - t3.micro
+    - t3.small
+    - t3.medium
     ConstraintDescription: Must contain valid instance type
     Default: t2.micro
     Description: Type of EC2 instance for the client instance.
@@ -174,7 +152,7 @@ Resources:
             EOF
       Tags:
       - Key: Name
-        Value: !Sub ${AWS::StackName}-instance
+        Value: rhel8-local-mirror-client
 
   InstanceIAMRole:
     Type: AWS::IAM::Role
@@ -221,7 +199,7 @@ Resources:
       ServiceToken: !GetAtt AMIInfoFunction.Arn
       Region: !Ref "AWS::Region"
       AMIName: RHEL-8.4.0_HVM*
-      Architecture: !Ref Architecture
+      Architecture: x86_64
 
   AMIInfoFunction:
     Type: AWS::Lambda::Function

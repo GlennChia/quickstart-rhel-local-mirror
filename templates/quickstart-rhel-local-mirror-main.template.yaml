@@ -20,7 +20,6 @@ Metadata:
           default: Amazon EC2 configuration
         Parameters:
           - KeyPairName
-          - Architecture
           - WorkloadInstanceType
           - StorageVolumeSize
       - Label:
@@ -30,8 +29,6 @@ Metadata:
           - QSS3BucketRegion
           - QSS3KeyPrefix
     ParameterLabels:
-      Architecture:
-        default: Workload server image architecture.
       KeyPairName:
         default: SSH key name
       StorageVolumeSize:
@@ -56,14 +53,6 @@ Metadata:
         default: VPC CIDR
 
 Parameters:
-  Architecture:
-    AllowedValues:
-      - x86_64
-      - arm64
-    ConstraintDescription: Must contain valid architecture
-    Default: x86_64
-    Description: The image architecture.
-    Type: String
   KeyPairName:
     Description: Name of an existing EC2 key pair. All instances will launch with
       this key pair.
@@ -198,7 +187,6 @@ Resources:
               - !Sub '${QSS3BucketName}-${AWS::Region}'
               - !Ref QSS3BucketName
       Parameters:
-        Architecture: !Ref Architecture
         KeyPairName: !Ref KeyPairName
         PrivateSubnet1ID: !GetAtt VPCStack.Outputs.PrivateSubnet1AID
         StorageVolumeSize: !Ref StorageVolumeSize

@@ -3,9 +3,13 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   This workload template deploys a RHEL Local Mirror instance in an existing VPC.
   **WARNING** This template creates EC2 instances and related resources. You will
-  be billed for the AWS resources used if you create a stack from this template.
+  be billed for the AWS resources used if you create a stack from this template. (qs-1t47u37ph)
 
 Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W9006
   AWS::CloudFormation::Interface:
     ParameterGroups:
     - Label:
@@ -163,7 +167,7 @@ Resources:
           Principal:
             Service: ec2.amazonaws.com
       ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -315,7 +319,7 @@ Resources:
           - sts:AssumeRole
       Path: "/"
       ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
       - PolicyName: root
         PolicyDocument:

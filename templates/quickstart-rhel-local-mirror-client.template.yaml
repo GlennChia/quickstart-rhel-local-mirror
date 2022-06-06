@@ -4,9 +4,13 @@ Description: >-
   This client template deploys a RHEL client instance in an existing VPC. This client
   connects to the RHEL local mirror instance. **WARNING** This template creates EC2
   instances and related resources. You will be billed for the AWS resources used if
-  you create a stack from this template.
+  you create a stack from this template. (qs-1t47u37lm)
 
 Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W9006
   AWS::CloudFormation::Interface:
     ParameterGroups:
     - Label:
@@ -167,7 +171,7 @@ Resources:
           Principal:
             Service: ec2.amazonaws.com
       ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -324,7 +328,7 @@ Resources:
           - sts:AssumeRole
       Path: "/"
       ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
       - PolicyName: root
         PolicyDocument:

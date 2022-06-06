@@ -1,13 +1,13 @@
 project:
   name: quickstart-rhel-local-mirror
-  owner: glennchi@amazon.com
+  owner: quickstart-eng@amazon.com
   regions:
   - us-east-1
 tests:
   rhel-local-mirror-main:
     parameters:
       AvailabilityZones: $[taskcat_getaz_2]
-      KeyPairName: "localmirrorkey"
+      KeyPairName: $[taskcat_getkeypair]
       QSS3BucketName: $[taskcat_autobucket]
       QSS3BucketRegion: $[taskcat_current_region]
     template: templates/quickstart-rhel-local-mirror-main.template.yaml

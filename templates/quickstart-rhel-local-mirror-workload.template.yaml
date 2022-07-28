@@ -178,6 +178,11 @@ Resources:
 
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F1000
+            reason: "Standard Amazon practice"
     Properties:
       GroupDescription: Allow access to the Workload instances
       VpcId: !Ref VPCID
@@ -198,6 +203,13 @@ Resources:
 
   AMIInfoFunction:
     Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: This are not required for this use-case, adding VPC will additional complexity. This Lambda only retrieves AMI IDs and does not process sensitive information.
+          - id: W92
+            reason: There is no need for Reserved Concurrent Executions.
     Properties:
       Role: !GetAtt AMIInfoFunctionLambdaExecutionRole.Arn
       Timeout: 30
@@ -318,13 +330,17 @@ Resources:
           Action:
           - sts:AssumeRole
       Path: "/"
-      ManagedPolicyArns:
-      - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
       - PolicyName: root
         PolicyDocument:
           Version: 2012-10-17
           Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: !Sub arn:${AWS::Partition}:logs:*:*:*
           - Effect: Allow
             Action:
             - ec2:DescribeImages

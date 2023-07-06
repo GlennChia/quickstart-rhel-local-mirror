@@ -206,9 +206,10 @@ Resources:
     Type: Custom::Rhel8AMIInfo
     Properties:
       ServiceToken: !GetAtt AMIInfoFunction.Arn
-      Region: !Ref "AWS::Region"
+      Region: !Ref AWS::Region
       AMIName: RHEL-8.4.0_HVM*
       Architecture: x86_64
+      Owner: "309956199498"
 
   AMIInfoFunction:
     Type: AWS::Lambda::Function

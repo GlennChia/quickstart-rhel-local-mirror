@@ -197,9 +197,10 @@ Resources:
     Type: Custom::Rhel8AMIInfo
     Properties:
       ServiceToken: !GetAtt AMIInfoFunction.Arn
-      Region: !Ref "AWS::Region"
+      Region: !Ref AWS::Region
       AMIName: RHEL-8.4.0_HVM*
       Architecture: x86_64
+      Owner: "309956199498"
 
   AMIInfoFunction:
     Type: AWS::Lambda::Function
@@ -207,110 +208,79 @@ Resources:
       cfn_nag:
         rules_to_suppress:
           - id: W89
-            reason: This are not required for this use-case, adding VPC will additional complexity. This Lambda only retrieves AMI IDs and does not process sensitive information.
+            reason: This is not required for this use-case, adding VPC will have additional complexity. This Lambda only retrieves AMI IDs and does not process sensitive information.
           - id: W92
             reason: There is no need for Reserved Concurrent Executions.
     Properties:
       Role: !GetAtt AMIInfoFunctionLambdaExecutionRole.Arn
       Timeout: 30
-      Handler: index.handler
-      Runtime: nodejs12.x
+      Handler: index.lambda_handler
+      Runtime: python3.10
       MemorySize: 128
       Description: Get AMI ID for the latest RHEL8 image
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
       Code:
         ZipFile: |
-          /**
-          * A Lambda function that looks up the latest AMI ID for a given region and architecture.
-          **/
-          var aws = require("aws-sdk");
-          var https = require("https");
-          var url = require("url");
+          import logging
+          import os
+          import boto3
+          import cfnresponse
 
-          exports.handler = function(event, context) {
-            console.log(`REQUEST RECEIVED:\n ${JSON.stringify(event)}`);    // For Delete requests, immediately send a SUCCESS response.
-            if (event.RequestType == "Delete") {
-              sendResponse(event, context, "SUCCESS");
-              return;
-            }
-            var responseStatus = "FAILED";
-            var responseData = {};
-            var ec2 = new aws.EC2({region: event.ResourceProperties.Region});
-            var describeImagesParams = {
-              Filters: [
-                {
-                  Name: "name",
-                  Values: [event.ResourceProperties.AMIName]
-                },
-                {
-                  Name: "architecture",
-                  Values: [event.ResourceProperties.Architecture]
-                },
-              ],
-              Owners: ["309956199498"]
-            };
-            // Get AMI IDs with the specified name pattern and owner
-            ec2.describeImages(describeImagesParams, function(err, describeImagesResult) {
-              if (err) {
-                responseData = {Error: "DescribeImages call failed"};
-                console.log(responseData.Error + ":\n", err);
-              } else {
-                var images = describeImagesResult.Images;
-                // Sort images by name in decscending order. The names contain the AMI version, formatted as YYYY.MM.Ver.
-                images.sort(function(x, y) {
-                  return y.CreationDate.localeCompare(x.CreationDate);
-                });
-                for (var j = 0; j < images.length; j++) {
-                  if (isBeta(images[j].Name)) continue;
-                  responseStatus = "SUCCESS";
-                  responseData["Id"] = images[j].ImageId;
-                  break;
+          ec2_client = boto3.client('ec2')
+
+          LOG_LEVEL = os.getenv('LOG_LEVEL')
+
+          def lambda_handler(event, context):
+            global log_level
+            log_level = str(LOG_LEVEL).upper()
+            if log_level not in { 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL' }:
+              log_level = 'ERROR'
+            logging.getLogger().setLevel(log_level)
+
+            # For Delete requests, immediately send a SUCCESS response.
+            if event['RequestType'] == 'Delete':
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              return
+
+            try:
+              # Get AMI IDs with the specified name pattern and owner
+              describe_images_result = ec2_client.describe_images(
+                Filters = [
+                  {
+                    'Name': 'name',
+                    'Values': [event['ResourceProperties']['AMIName']]
+                  },
+                  {
+                    'Name': 'architecture',
+                    'Values': [event['ResourceProperties']['Architecture']]
+                  }
+                ],
+                Owners = [event['ResourceProperties']['Owner']]
+              )
+              images = describe_images_result['Images']
+
+              # Sort images by name in descending order. The names contain the AMI version, formatted as YYYY.MM.Ver.
+              images.sort(key=lambda x: x['CreationDate'], reverse=True)
+
+              for image in images:
+                if is_beta(image['Name']):
+                  continue
+                response_data = {
+                  'Id': image['ImageId']
                 }
-              }
-            sendResponse(event, context, responseStatus, responseData);
-            });
-          };
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+                return
+            except Exception as e:
+              logging.error(e)
+              response_data = {'Error': 'DescribeImages call failed'}
+              cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
+              return
 
-          // Check if the image is a beta or rc image. The Lambda function won't return any of those images.
-          function isBeta(imageName) {
-            return imageName.toLowerCase().indexOf("beta") > -1 || imageName.toLowerCase().indexOf(".rc") > -1;
-          }
-
-          // Send response to the pre-signed S3 URL
-          function sendResponse(event, context, responseStatus, responseData) {
-            var responseBody = JSON.stringify({
-              Status: responseStatus,
-              Reason: `See the details in CloudWatch Log Stream: ${context.logStreamName}`,
-              PhysicalResourceId: context.logStreamName,
-              StackId: event.StackId,
-              RequestId: event.RequestId,
-              LogicalResourceId: event.LogicalResourceId,
-              Data: responseData
-            });
-            console.log("RESPONSE BODY:\n", responseBody);
-            var parsedUrl = url.parse(event.ResponseURL);
-            var options = {
-              hostname: parsedUrl.hostname,
-              port: 443,
-              path: parsedUrl.path,
-              method: "PUT",
-              headers: {
-                "content-type": "",
-                "content-length": responseBody.length
-              }
-            };
-            console.log("SENDING RESPONSE...\n");
-            var request = https.request(options, function(response) {
-              console.log(`STATUS: ${response.statusCode}`);
-              console.log(`HEADERS: ${JSON.stringify(response.headers)}`);
-              context.done();
-            });
-            request.on("error", function(error) {
-              console.log(`sendResponse Error: ${error}`);
-              context.done();
-            });
-            request.write(responseBody);
-            request.end();
-          }
+          # Check if the image is a beta or rc image. The Lambda function won't return any of those images.
+          def is_beta(image_name):
+            return 'beta' in image_name.lower() or '.rc' in image_name.lower()
 
   AMIInfoFunctionLambdaExecutionRole:
     Type: AWS::IAM::Role
